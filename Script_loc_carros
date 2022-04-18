@@ -1,0 +1,209 @@
+create or replace procedure PRC_LOCACAO_CARROS (
+P_DATA_LOC TB_LOCACAO.DATA_LOCACAO%TYPE,
+P_ID_CARRO TB_LOCACAO.ID_CARRO%TYPE,
+P_PERIODO NUMBER,
+P_ID_CLIENTE TB_LOCACAO.ID_CLIENTE%TYPE,
+P_SEGURO TB_LOCACAO.SEGURO%TYPE,
+P_ID_SEGURO TB_LOCACAO.ID_SEGURO%TYPE,
+P_COBERTURA TB_SEGURO.COBERTURA%TYPE)
+IS
+V_ALUGADO NUMBER; 
+V_NOME_CLIENTE VARCHAR2(20);
+V_STATUS NUMBER(1);
+V_ERROR EXCEPTION; --1
+V_CONDICAO VARCHAR (7);
+V_ERRADINHO EXCEPTION; --2
+V_RANDOM VARCHAR2(7);
+V_NOME_CARRO VARCHAR2(40);
+V_PARCIAL NUMBER ;
+V_TOTAL NUMBER;
+V_LOC NUMBER;
+V_DIA_LOC NUMBER;
+V_DATA DATE;
+
+BEGIN 
+SELECT 'AP'||ROUND(DBMS_RANDOM.VALUE(10000,99999))INTO V_RANDOM FROM DUAL;   -- VOLTA QUALQUER VALOR ALEATORIO
+
+    SELECT VALOR_CARRO
+    INTO V_LOC                                                            -- DANDO VALOR HÁ VALOR_LOCACAO
+    FROM TB_CARROS
+    WHERE ID_CARRO = P_ID_CARRO;
+
+    V_LOC := V_LOC * 0.15;    --   X 15% DO VALOR DO CARRO
+
+    V_DIA_LOC := ROUND(SQRT(V_LOC)); -- PEGANDO RAIZ QUADRADA DO V_LOC E AREDONDANDO O VALOR 
+
+    V_DATA := SYSDATE + P_PERIODO;            -- SOMANDO O DIA DE HOJE + O PERIODO DE LOCACAO 
+
+    SELECT VALOR_CARRO
+    INTO V_PARCIAL                                         -- DANDO VALOR DA APOLICE PARCIAL
+    FROM TB_CARROS
+    WHERE ID_CARRO = P_ID_CARRO;
+
+
+    V_PARCIAL := (V_DIA_LOC * P_PERIODO) * 0.10;  -- X10% DO VALOR DO CARRO
+
+    SELECT VALOR_CARRO
+    INTO V_TOTAL
+    FROM TB_CARROS                                                 -- DANDO VALOR A APOLICE TOTAL
+    WHERE ID_CARRO = P_ID_CARRO;
+
+
+    V_TOTAL := (V_DIA_LOC * P_PERIODO) * 0.20;   -- X20% DO VALOR DO CARRO
+
+
+
+
+    SELECT NOME_CARRO
+    INTO V_NOME_CARRO                                 -- DANDO VALOR PRA TRAZER O NOME DO CARRO
+    FROM TB_CARROS
+    WHERE ID_CARRO = P_ID_CARRO;
+--SE ESTIVER COM 1 É QUE O CARRO ESTA ALUGADO
+
+SELECT COUNT(1) 
+     INTO V_ALUGADO 
+     FROM TB_CARROS
+     WHERE LOCADO = 1
+     AND ID_CARRO = P_ID_CARRO;
+
+--SE ESTIVER 1 NO STATUS É QUE ESTA COM PENDENCIA E NÃO PODE ALUGAR
+
+SELECT COUNT (1)
+     INTO V_STATUS 
+     FROM TB_CLIENTES
+     WHERE STATUS = 1
+     AND ID_CLIENTE = P_ID_CLIENTE;
+
+-- SE ESTIVER 0 NO STATUS É QUE ESTA SEM PENDENCIAS
+
+SELECT COUNT(1)
+     INTO V_CONDICAO 
+     FROM TB_CLIENTES 
+     WHERE STATUS = 0     
+     AND ID_CLIENTE = P_ID_CLIENTE;
+
+--  VALIDACAO DO NOME NO DBMS
+
+SELECT NOME_CLIENTE
+     INTO V_NOME_CLIENTE         
+     FROM TB_CLIENTES 
+     WHERE ID_CLIENTE = P_ID_CLIENTE;
+
+--VALIDANDO SE O CARRO ESTA OU NAO ALUGADO
+
+    IF V_ALUGADO = 1 THEN 
+     RAISE V_ERROR;
+
+     END IF;
+
+--VALIDANDO SE ESTA COM PENDENCIA
+
+    IF V_STATUS = 1 THEN
+      RAISE V_ERRADINHO;          
+
+    END IF;
+
+    IF V_CONDICAO = 0  AND  V_ALUGADO = 0 THEN
+         IF P_PERIODO >= 180 THEN
+
+
+        INSERT INTO TB_SEGURO VALUES(
+        '',
+        V_RANDOM,
+        P_COBERTURA,
+        ''
+    );
+
+        INSERT INTO TB_LOCACAO VALUES(
+        '',
+        P_DATA_LOC,
+        P_ID_CARRO,
+        V_NOME_CARRO,
+        V_DIA_LOC * P_PERIODO,
+        V_DATA,
+        P_ID_CLIENTE,
+        P_SEGURO,
+        P_ID_SEGURO
+
+    );
+
+
+          DBMS_OUTPUT.PUT_LINE ('SEGURO '||'GRATIS'||' CONFIRMADO'||'VEÍCULO:' || V_NOME_CARRO || chr(10) ||
+                                'PARA CLIENTE:' || V_NOME_CLIENTE || chr(10) ||
+                                'LOCAÇÃO CONFIRMADA!');    
+     UPDATE TB_CARROS          
+     SET LOCADO = 1
+     WHERE ID_CARRO = P_ID_CARRO;
+
+    ELSE 
+
+    IF P_SEGURO = 'NAO' THEN 
+
+      DBMS_OUTPUT.PUT_LINE ('SEU CARRO ESTA SEM SEGURO');
+
+      INSERT INTO TB_LOCACAO VALUES(
+        '',
+        P_DATA_LOC,
+        P_ID_CARRO,
+        V_NOME_CARRO,
+        V_DIA_LOC * P_PERIODO,
+        V_DATA,
+        P_ID_CLIENTE,
+        P_SEGURO,
+        P_ID_SEGURO    
+    );
+
+    UPDATE TB_CARROS 
+    SET LOCADO = 1
+    WHERE ID_CARRO = P_ID_CARRO;
+
+    END IF;
+
+    IF P_SEGURO = 'SIM' AND P_COBERTURA = 'TOTAL' THEN
+          INSERT INTO TB_SEGURO VALUES (NULL, 
+                                                                          V_RANDOM,
+                                                                          P_COBERTURA,
+                                                                          ROUND(V_TOTAL));
+
+        INSERT INTO TB_LOCACAO VALUES(
+        '',
+        P_DATA_LOC,
+        P_ID_CARRO,
+        V_NOME_CARRO,
+        V_DIA_LOC * P_PERIODO + V_TOTAL,
+        V_DATA,
+        P_ID_CLIENTE,
+        P_SEGURO,
+        P_ID_SEGURO    
+    );
+
+    UPDATE TB_CARROS 
+    SET LOCADO = 1
+    WHERE ID_CARRO = P_ID_CARRO;
+
+        DBMS_OUTPUT.PUT_LINE ('O VEÍCULO:' || V_NOME_CARRO || chr(10) ||
+                                'PARA CLIENTE:' || V_NOME_CLIENTE || chr(10) ||
+                                'FOI MARCADO COMO: RESERVADO  NA TABELA TB_CARROS.' || chr(10) ||
+                                'ATÉ:' || P_PERIODO);
+
+        DBMS_OUTPUT.PUT_LINE ('SEGURO DE '|| 'R$'|| ROUND(V_TOTAL) || ',00' || ' CONFIRMADO');
+
+   
+
+                                END IF;
+                                END IF;
+                                END IF;
+
+
+EXCEPTION
+     WHEN V_ERROR THEN           
+          DBMS_OUTPUT.PUT_LINE ('**** ATENÇÃO ****' ||chr(10) ||
+                                'CLIENTE:' || V_NOME_CLIENTE || chr(10) ||
+                                '** ESTE CARRO JA ESTA ALUGADO **');
+
+     WHEN V_ERRADINHO THEN     
+          DBMS_OUTPUT.PUT_LINE ('**** ATENÇÃO ****' || chr(10) ||
+                                'O CLIENTE:' || V_NOME_CLIENTE || chr(10) ||
+                                '** ESTA COM PENDENCIAS **');
+
+END;
